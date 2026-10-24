@@ -1,0 +1,102 @@
+version: 2.1
+
+orbs:
+  snyk: snyk/snyk@2.3.0
+
+jobs:
+  build:
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      - checkout
+      - restore_cache:
+          keys: ['maven-v1-{{ checksum "pom.xml" }}']
+      - run: ./mvnw -B clean package -DskipTests
+      - save_cache:
+          key: maven-v1-{{ checksum "pom.xml" }}
+          paths: [~/.m2]
+      - persist_to_workspace:
+          root: .
+          paths: [target/app.jar]
+
+  test:
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      - checkout
+      - restore_cache:
+          keys: ['maven-v1-{{ checksum "pom.xml" }}']
+      - run: ./mvnw -B test
+      - store_test_results:
+          path: target/surefire-reports
+      - store_artifacts:
+          path: target/surefire-reports
+
+  snyk_scan:
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      - checkout
+      - restore_cache:
+          keys: ['maven-v1-{{ checksum "pom.xml" }}']
+      - snyk/scan:
+          severity-threshold: high
+          cli-version: 1.1308.1
+          monitor-on-build: false
+
+  snyk_code:
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      - checkout
+      - snyk/scan:
+          command: code test
+          severity-threshold: high
+          cli-version: 1.1308.1
+          monitor-on-build: false
+
+  publish:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - setup_remote_docker
+      - run:
+          name: Publish tested and scanned image
+          command: |
+            test -n "$DOCKER_USERNAME" && test -n "$DOCKER_PASSWORD"
+            printf '%s' "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+            docker build -f Dockerfile.ci -t "$DOCKER_USERNAME/devops-demo:$CIRCLE_SHA1" -t "$DOCKER_USERNAME/devops-demo:latest" .
+            docker push "$DOCKER_USERNAME/devops-demo:$CIRCLE_SHA1"
+            docker push "$DOCKER_USERNAME/devops-demo:latest"
+
+  deploy:
+    docker:
+      - image: cimg/node:lts
+    steps:
+      - run:
+          name: Redeploy the scanned image on Railway
+          command: |
+            test -n "$RAILWAY_TOKEN" && test -n "$RAILWAY_SERVICE_ID"
+            npx --yes @railway/cli redeploy --service "$RAILWAY_SERVICE_ID" --yes
+
+workflows:
+  build_test_scan_publish_deploy:
+    jobs:
+      - build
+      - snyk_scan
+      - snyk_code
+      - test:
+          requires: [build]
+      - publish:
+          requires: [test, snyk_scan, snyk_code]
+          filters:
+            branches:
+              only: main
+      - deploy:
+          requires: [publish]
+          filters:
+            branches:
+              only: main
