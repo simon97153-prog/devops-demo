@@ -14,6 +14,12 @@ Snyk orb 2.3.0 and CLI 1.1308.1 follow the lesson's pinned versions. Credentials
 
 Lesson 4.14 adds OSV-Scanner and ZAP workflows separately. GitHub Actions uses the non-secret repository variable `APP_URL` for the live application.
 
+## Initial findings
+
+The Snyk website scan on 24 October 2026 found 21 dependency issues (3 Critical, 9 High, 9 Medium). Its source-code analysis reported no findings. The dependency findings and fix advice are recorded in [security ticket #1](https://github.com/simon97153-prog/devops-demo/issues/1). These counts describe the initial snapshot and may change as new advisories are published.
+
+The existing Railway demo pulls `simon97153/devops-demo:latest` from Docker Hub and exposes `/hello` and `/health`. Its app URL is stored in the GitHub Actions repository variable `APP_URL`. Deployment credentials must be configured separately in CircleCI; a reachable app alone does not establish that the new pipeline can redeploy it.
+
 ## Lesson references
 
 - [Lesson 4.13](https://github.com/su-ntu-sctp/ai-4.13-devsecops-foundation/blob/main/lesson.md)
